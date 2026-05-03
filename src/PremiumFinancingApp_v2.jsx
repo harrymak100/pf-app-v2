@@ -7,34 +7,30 @@ import {
 } from "recharts";
 
 /* =============================================================================
- * FWD PREMIUM FINANCING PROFESSIONAL DEMO  ·  v5.0
+ * FWD PREMIUM FINANCING PROFESSIONAL DEMO  ·  v7.0
  * FWD Insurance Hong Kong
  * Products: Wealth ICON Horizon (WIH) · Wealth ICON Supreme III (WIS3)
  * =============================================================================
  *
- * V5 KEY CHANGE — SIMPLIFIED RATE INPUT (for entry-level consultants)
- * -------------------------------------------------------------------
- * Rate Assumptions section redesigned:
- *   • DEFAULT (Simple Mode): Just ONE field — "Annual Loan Rate"
- *     - Bank selection auto-fills its currently-published rate
- *     - User can override directly (no need to understand HIBOR/spread/cap)
- *   • OPTIONAL (Advanced Mode): Hidden behind toggle, exposes:
- *     - Cap during early years
- *     - Tier rate schedule (Y1-N rate1, Y(N+1)+ rate2)
+ * V7 KEY CHANGE — ALL YELLOW PARAMS NOW DIRECTLY VISIBLE
+ * -------------------------------------------------------
+ * Per user request: NO MORE hidden settings. All Excel yellow parameters
+ * are displayed openly in Section 02 (Case Parameters) or Section 03
+ * (Rate Assumptions). The "Show Advanced" collapse toggle is REMOVED.
  *
- * Inherited from V4: Cash vs PF side-by-side comparison, opportunity cost chart
- * Inherited from V3: IRR replaces ROI (industry standard)
- * Inherited from V2: Print/PDF, full Y114 lifetime data
+ * NEW LAYOUT:
+ * ─── Section 02 — Case Parameters ───
+ *   Row 1: Premium · Currency · Bank · LTV
+ *   Row 2: Initial Outlay Mode · Plan FX Rate · Loan FX Rate
+ *   Row 3: (conditional) Manual Initial Outlay Amount
+ *   Row 4: Fulfillment Ratio slider (full-width)
  *
- * MAINTENANCE — UPDATE BANK RATES
- * --------------------------------
- * Edit BANK_PLATFORMS.publishedRateHKD / publishedRateUSD when banks update
- * their public rate sheets. The simple-mode "Loan Rate" field will auto-populate.
+ * ─── Section 03 — Rate Assumptions ───
+ *   Row 1: Loan Rate · Premium Discount (with Auto-tier checkbox)
+ *   Row 2: Future Rate Change toggle · Tier Year · Rate After Change
  *
- * VALIDATION (Excel cross-checks, HKD scenario 4.85%/3.15% tier)
- * --------------------------------------------------------------
- * Y5  IRR = 4.02% ✓     Y10 IRR = 6.96% ✓
- * Y15 IRR = 6.60% ✓     Y20 IRR = 7.22% ✓ (proves leverage uplift)
+ * Inherited from V6: All Excel yellow params (FR, FX rates, Outlay override,
+ *                    Auto-tier discount logic)
  * ============================================================================= */
 
 // ─── BANK PLATFORMS (last updated 2026-04-24) ────────────────────────────────
@@ -245,6 +241,17 @@ const I18N = {
     tierYear: "於第幾年改變利率",
     tierRate: "之後年利率",
     rateAfterTier: "後段假設利率",
+    fulfillmentRatio: "派發比率 (Fulfillment Ratio)",
+    fulfillmentRatioHint: "保險公司實際派發紅利相對於 illustration 的比率，預設 100%；FWD 過往 FR 接近 100%（請查官網確認）",
+    initialOutlayMode: "首期投入金額",
+    initialOutlayAuto: "自動",
+    initialOutlayManual: "手動",
+    initialOutlayHint: "預設由系統根據保費、貸款、折扣自動計算；可手動指定金額",
+    initialOutlayManualHint: "已手動設定 — 等效折扣會自動反推",
+    effectiveDiscount: "等效折扣",
+    excelYellowParams: "Excel 黃色可調參數",
+    planFxRate: "保單匯率 (HKD/USD)",
+    loanFxRate: "貸款匯率 (HKD/USD)",
     viewRange: "顯示年期範圍",
     print: "列印 / 匯出 PDF",
 
@@ -306,7 +313,7 @@ const I18N = {
 
     disclaimer: [
       "本演示僅供內部參考及客戶展示用途，數據基於官方 illustration 及預設假設計算。",
-      "Fulfillment Ratio (FR) 假設為 100%，實際派發紅利並非保證，可能高於或低於演示數值。",
+      "Fulfillment Ratio (FR) 預設為 100%；實際派發紅利並非保證，可能高於或低於演示數值。可在進階設定中調整 FR 做壓力測試。",
       "保監局訂明保險產品 illustration 的非保證部分 IRR cap 為 7%，此限制適用於產品本身（即全現金投保）的 IRR。使用保費融資後，由於槓桿效應，融資後的有效 IRR 可超過 7%，這並不違反監管要求 — 槓桿放大正是保費融資的本質。",
       "貸款利率隨銀行政策及市場 HIBOR/SOFR 浮動，本演示假設利率不變；實際利息支出可能上升或下降，需配合進階設定的「未來利率調整」做壓力測試。",
       "保費融資涉及槓桿風險，當保單退保價值不足以償還貸款時，客戶須補倉或追加抵押。",
@@ -356,6 +363,17 @@ const I18N = {
     tierYear: "Rate Change at Year",
     tierRate: "Rate After Change",
     rateAfterTier: "Assumed Future Rate",
+    fulfillmentRatio: "Fulfillment Ratio",
+    fulfillmentRatioHint: "Insurer's actual bonus payout vs illustration; default 100%. FWD's historical FR is close to 100% (verify on website).",
+    initialOutlayMode: "Initial Outlay",
+    initialOutlayAuto: "Auto",
+    initialOutlayManual: "Manual",
+    initialOutlayHint: "By default, auto-calculated from premium, loan, discount; can be manually set",
+    initialOutlayManualHint: "Manually set — effective discount auto back-calculated",
+    effectiveDiscount: "Effective Discount",
+    excelYellowParams: "Excel Yellow Editable Parameters",
+    planFxRate: "Plan FX Rate (HKD/USD)",
+    loanFxRate: "Loan FX Rate (HKD/USD)",
     viewRange: "Display Range",
     print: "Print / Export PDF",
 
@@ -417,7 +435,7 @@ const I18N = {
 
     disclaimer: [
       "This demo is for internal & client presentation use only; figures based on official illustration with stated assumptions.",
-      "Fulfillment Ratio (FR) assumed at 100%; actual non-guaranteed bonuses may differ.",
+      "Fulfillment Ratio (FR) defaults to 100%; actual non-guaranteed bonuses may differ. Adjustable via Advanced Settings for stress testing.",
       "IA's 7% IRR illustration cap applies to the underlying policy's non-guaranteed return on a cash basis. Post-leverage IRR can legitimately exceed 7% — this is the inherent value of premium financing and does not violate regulations.",
       "Loan rates float with bank policy and market HIBOR/SOFR; this demo assumes rate stays constant. Use the Advanced 'Rate Change' option for stress testing.",
       "Premium financing carries leverage risk: if surrender value falls below loan, top-up may be required.",
@@ -532,10 +550,16 @@ export default function PremiumFinancingApp() {
   const [customLTV, setCustomLTV] = useState(0.90);
   const [customDiscount, setCustomDiscount] = useState(0.05);
   // SIMPLIFIED: One loan rate field that auto-syncs from bank but is user-editable
-  const [loanRate, setLoanRate] = useState(0.0349);  // matches default bank (Shacombank HKD)
-  const [rateOverridden, setRateOverridden] = useState(false); // tracks if user manually edited
-  // Advanced settings (collapsed by default)
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [loanRate, setLoanRate] = useState(0.0349);
+  const [rateOverridden, setRateOverridden] = useState(false);
+  // ★ V6/V7: Excel yellow parameters — all directly visible, no hiding
+  const [fulfillmentRatio, setFulfillmentRatio] = useState(1.0);  // C10 — scales NGV
+  const [initialOutlayMode, setInitialOutlayMode] = useState("auto");  // 'auto' | 'manual'
+  const [customInitialOutlay, setCustomInitialOutlay] = useState(115000);
+  const [planFxRate, setPlanFxRate] = useState(7.85);  // E3 — HKD per USD
+  const [loanFxRate, setLoanFxRate] = useState(7.85);  // E6 — HKD per USD
+  const [discountAutoTier, setDiscountAutoTier] = useState(true);  // <3M HKD: 5%, ≥3M: 7%
+  // Future Rate Change (no longer "advanced" — directly visible per user request)
   const [tierEnabled, setTierEnabled] = useState(false);
   const [tierYear, setTierYear] = useState(18);
   const [tierRateInput, setTierRateInput] = useState(0.0315);
@@ -552,7 +576,15 @@ export default function PremiumFinancingApp() {
 
   // ─── EFFECTIVE PARAMETERS ─────────────────────────────────────────────────
   const ltv = isCustom ? customLTV : bank.ltv;
-  const discount = customDiscount;
+
+  // Premium in HKD equivalent (for discount tier check & display)
+  const fxForPlan = currency === "USD" ? planFxRate : 1.0;
+  const premiumInHKD = premium * fxForPlan;
+
+  // Auto-tier discount (Excel: <HKD 3M → 5%, ≥HKD 3M → 7%)
+  const autoDiscount = premiumInHKD >= 3000000 ? 0.07 : 0.05;
+  const discount = discountAutoTier ? autoDiscount : customDiscount;
+
   const setupFeeRate = bank.setupFee || 0;
 
   // Bank's published rate for the chosen currency
@@ -565,6 +597,39 @@ export default function PremiumFinancingApp() {
     setLoanRate(bankPublishedRate);
     setRateOverridden(false);
   }, [bankKey, currency]);
+
+  // ★ V7.1: Reverse-sync — when in MANUAL mode, outlay is the anchor
+  // and premium auto-derives using max LTV.
+  // Math: outlay = premium - financing*(1-fee) - premium*discount
+  //       financing = premium * 0.8 * ltv (max LTV)
+  //       outlay = premium * [1 - 0.8*ltv*(1-fee) - discount]
+  //       ⇒ premium = outlay / [1 - 0.8*ltv*(1-fee) - discount]
+  useEffect(() => {
+    if (initialOutlayMode === "manual") {
+      const denom = 1 - 0.8 * ltv * (1 - setupFeeRate) - discount;
+      if (denom > 0.01 && customInitialOutlay > 0) {
+        const newPremium = customInitialOutlay / denom;
+        const rounded = Math.round(newPremium / 1000) * 1000;
+        if (Math.abs(rounded - premium) > 100) {
+          setPremium(rounded);
+        }
+      }
+    }
+  }, [customInitialOutlay, initialOutlayMode, ltv, discount, setupFeeRate]);
+
+  // When SWITCHING to manual mode, seed customInitialOutlay with current auto value
+  // so user starts from current state, not jarring jump
+  useEffect(() => {
+    if (initialOutlayMode === "manual") {
+      const day1 = premium * 0.80;
+      const fin = day1 * ltv;
+      const setup = fin * setupFeeRate;
+      const currentAutoOutlay = premium - fin - (premium * discount) + setup;
+      if (Math.abs(customInitialOutlay - currentAutoOutlay) > 1000) {
+        setCustomInitialOutlay(Math.round(currentAutoOutlay));
+      }
+    }
+  }, [initialOutlayMode]);
 
   // Year-aware effective rate (uses simple loan rate; cap & tier are advanced)
   const rateForYear = (y) => {
@@ -584,12 +649,17 @@ export default function PremiumFinancingApp() {
   const currentEffectiveRate = rateForYear(1);
 
   // ─── CALCULATIONS ─────────────────────────────────────────────────────────
+  // ★ V7.1: Premium is ALWAYS the anchor in calculations.
+  //   - AUTO mode: user inputs premium, outlay derives
+  //   - MANUAL mode: user inputs outlay → premium auto-syncs (via useEffect above)
+  //                  → calculation uses the synced premium
   const calc = useMemo(() => {
     const day1SV = premium * 0.80;
-    const financing = day1SV * ltv;
-    const premiumDiscountAmt = premium * discount;
+    const financing = day1SV * ltv;  // always at max LTV
     const setupFeeAmt = financing * setupFeeRate;
+    const premiumDiscountAmt = premium * discount;
     const initialOutlay = premium - financing - premiumDiscountAmt + setupFeeAmt;
+    const effectiveLTV = day1SV > 0 ? financing / day1SV : 0;
     const leverage = premium / Math.max(initialOutlay, 1);
     const scaleFactor = premium / product.baseline;
 
@@ -603,9 +673,10 @@ export default function PremiumFinancingApp() {
       const yearInterest = yearInterests[idx];
       cumInterest += yearInterest;
 
+      // ★ V6: Apply Fulfillment Ratio to NGV only (GV is contractually guaranteed)
       const scaledGV = row.gv * scaleFactor;
-      const scaledNGV = row.ngv * scaleFactor;
-      const scaledTSV = row.tsv * scaleFactor;
+      const scaledNGV = row.ngv * scaleFactor * fulfillmentRatio;
+      const scaledTSV = scaledGV + scaledNGV;
 
       // Net profit (absolute $)
       const netProfitPF = scaledTSV - premium - cumInterest + premiumDiscountAmt - setupFeeAmt;
@@ -675,9 +746,9 @@ export default function PremiumFinancingApp() {
     return {
       day1SV, financing, premiumDiscountAmt, setupFeeAmt,
       initialOutlay, year1Interest, leverage, projection,
-      breakEvenPF, breakEvenCash,
+      breakEvenPF, breakEvenCash, effectiveLTV,
     };
-  }, [premium, ltv, discount, setupFeeRate, loanRate, isCustom, bank, tierEnabled, tierYear, tierRateInput, altReturn, product]);
+  }, [premium, ltv, discount, setupFeeRate, loanRate, isCustom, bank, tierEnabled, tierYear, tierRateInput, altReturn, product, fulfillmentRatio]);
 
   // Filtered projection by view range
   const visibleProjection = useMemo(
@@ -815,14 +886,35 @@ export default function PremiumFinancingApp() {
           })}
         </div>
 
-        {/* ═══════════════════ INPUT PANEL ═══════════════════ */}
+        {/* ═══════════════════ SECTION 02 — CASE PARAMETERS ═══════════════════ */}
         <SectionLabel num="02" label={t.inputSection} styles={styles} />
         <div className="pf-card no-print" style={cardStyle(styles)}>
+
+          {/* Row 1: Premium, Currency, Bank, LTV (existing) */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 20 }}>
             <div>
-              <FieldLabel styles={styles}>{t.premium} ({currency})</FieldLabel>
+              <FieldLabel styles={styles}>
+                {t.premium} ({currency})
+                {initialOutlayMode === "manual" && (
+                  <span style={{
+                    marginLeft: 6, fontSize: 10, color: "#2C5F8D",
+                    fontWeight: 600, fontStyle: "italic",
+                  }}>↻ {lang === "tc" ? "由首期反推" : "from outlay"}</span>
+                )}
+              </FieldLabel>
               <input type="number" value={premium} onChange={(e) => setPremium(Number(e.target.value) || 0)}
-                style={inputStyle(styles)} step="10000" />
+                style={{
+                  ...inputStyle(styles),
+                  backgroundColor: initialOutlayMode === "manual" ? "#F0F6FF" : "#FFF",
+                  color: initialOutlayMode === "manual" ? "#2C5F8D" : styles.ink,
+                  fontWeight: initialOutlayMode === "manual" ? 600 : 400,
+                }}
+                step="10000" />
+              {currency === "USD" && (
+                <FieldHint styles={styles}>
+                  ≈ HK${fmt(premiumInHKD)} ({lang === "tc" ? "按保單匯率" : "at plan FX"} {planFxRate.toFixed(2)})
+                </FieldHint>
+              )}
             </div>
             <div>
               <FieldLabel styles={styles}>{t.currency}</FieldLabel>
@@ -844,6 +936,219 @@ export default function PremiumFinancingApp() {
               <input type="number" value={(ltv * 100).toFixed(0)}
                 onChange={(e) => isCustom && setCustomLTV(Number(e.target.value) / 100)}
                 disabled={!isCustom} style={{ ...inputStyle(styles), opacity: isCustom ? 1 : 0.6 }} step="5" />
+            </div>
+          </div>
+
+          {/* Row 2: Initial Outlay Mode + Plan FX + Loan FX (Excel yellow) */}
+          <div style={{
+            marginTop: 20, paddingTop: 20,
+            borderTop: `1px solid ${styles.border}`,
+          }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
+            }}>
+              <span style={{
+                display: "inline-block", width: 10, height: 10,
+                backgroundColor: "#FFD700", border: `1px solid ${styles.accent}`,
+              }} />
+              <span style={{
+                fontFamily: styles.fontDisplay, fontSize: 13, fontWeight: 600,
+                color: styles.ink, letterSpacing: "0.02em",
+              }}>{lang === "tc" ? "Excel 黃色可調參數" : "Excel Yellow Parameters"}</span>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 20, alignItems: "start" }}>
+              {/* Initial Outlay with Auto/Manual toggle */}
+              <div>
+                <FieldLabel styles={styles}>{t.initialOutlayMode}</FieldLabel>
+                <div style={{
+                  display: "flex", border: `1px solid ${styles.border}`,
+                  borderRadius: "2px", marginBottom: 8, overflow: "hidden",
+                }}>
+                  <button
+                    onClick={() => setInitialOutlayMode("auto")}
+                    style={{
+                      flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 600,
+                      backgroundColor: initialOutlayMode === "auto" ? styles.ink : "#FFF",
+                      color: initialOutlayMode === "auto" ? "#FFF" : styles.ink,
+                      border: "none", cursor: "pointer", fontFamily: styles.fontBody,
+                      letterSpacing: "0.03em",
+                    }}>
+                    {lang === "tc" ? "由保費計算" : "From Premium"}
+                  </button>
+                  <button
+                    onClick={() => setInitialOutlayMode("manual")}
+                    style={{
+                      flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 600,
+                      backgroundColor: initialOutlayMode === "manual" ? styles.ink : "#FFF",
+                      color: initialOutlayMode === "manual" ? "#FFF" : styles.ink,
+                      border: "none", cursor: "pointer", fontFamily: styles.fontBody,
+                      borderLeft: `1px solid ${styles.border}`,
+                      letterSpacing: "0.03em",
+                    }}>
+                    {lang === "tc" ? "由首期反推 ✎" : "From Outlay ✎"}
+                  </button>
+                </div>
+                {initialOutlayMode === "manual" ? (
+                  <input type="number"
+                    value={customInitialOutlay}
+                    onChange={(e) => setCustomInitialOutlay(Number(e.target.value) || 0)}
+                    style={{
+                      ...inputStyle(styles),
+                      fontSize: 16, fontWeight: 600,
+                      color: styles.accent,
+                      backgroundColor: "#FFFAF3",
+                    }}
+                    step="1000" />
+                ) : (
+                  <div style={{
+                    ...inputStyle(styles),
+                    backgroundColor: "#FAFAF7",
+                    fontFamily: styles.fontMono, fontWeight: 600,
+                    color: styles.inkSoft, fontSize: 16,
+                  }}>
+                    {fmtCurrency(calc.initialOutlay, currency)}
+                  </div>
+                )}
+
+                {/* Live feedback in manual mode */}
+                {initialOutlayMode === "manual" && (
+                  <div style={{
+                    marginTop: 8, padding: "8px 10px",
+                    backgroundColor: "#F0F6FF",
+                    borderLeft: `3px solid #2C5F8D`,
+                    fontSize: 11, color: styles.ink, borderRadius: "2px",
+                    fontFamily: styles.fontMono, lineHeight: 1.6,
+                  }}>
+                    <div style={{ fontFamily: styles.fontBody, fontWeight: 600, marginBottom: 4, color: "#2C5F8D" }}>
+                      {lang === "tc" ? "↻ 已反推保費及融資結構：" : "↻ Premium & financing back-derived:"}
+                    </div>
+                    <div>
+                      <strong>{lang === "tc" ? "躉繳保費" : "Premium"}：</strong>
+                      <span style={{ color: styles.accent, fontWeight: 700 }}>
+                        {fmtCurrency(premium, currency)}
+                      </span>
+                    </div>
+                    <div>
+                      <strong>{lang === "tc" ? "融資金額" : "Financing"}：</strong>
+                      <span style={{ color: styles.accent, fontWeight: 700 }}>
+                        {fmtCurrency(calc.financing, currency)}
+                      </span>
+                    </div>
+                    <div>
+                      <strong>{lang === "tc" ? "首年利息" : "Y1 Interest"}：</strong>
+                      <span style={{ fontWeight: 700 }}>
+                        {fmtCurrency(calc.year1Interest, currency)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <FieldHint styles={styles}>
+                  {initialOutlayMode === "manual"
+                    ? (lang === "tc"
+                        ? "首期作為預算基準 → 反推保費及融資結構（最大 LTV）"
+                        : "Outlay as budget anchor → derive premium & loan structure (max LTV)")
+                    : (lang === "tc"
+                        ? "= 保費 − 融資 − 折扣（套用最大 LTV）"
+                        : "= Premium − Loan − Discount (max LTV applied)")}
+                </FieldHint>
+              </div>
+
+              {/* Plan FX Rate */}
+              <div>
+                <FieldLabel styles={styles}>{t.planFxRate || "保單匯率"}</FieldLabel>
+                <input type="number" value={planFxRate.toFixed(2)}
+                  onChange={(e) => setPlanFxRate(Number(e.target.value) || 7.85)}
+                  style={{
+                    ...inputStyle(styles),
+                    opacity: currency === "HKD" ? 0.5 : 1,
+                  }}
+                  step="0.01"
+                  disabled={currency === "HKD"} />
+                <FieldHint styles={styles}>
+                  {currency === "HKD"
+                    ? (lang === "tc" ? "HKD 保單不適用" : "N/A for HKD policy")
+                    : (lang === "tc" ? "Excel E3 — HKD 換算用" : "Excel E3 — HKD conversion")}
+                </FieldHint>
+              </div>
+
+              {/* Loan FX Rate */}
+              <div>
+                <FieldLabel styles={styles}>{t.loanFxRate || "貸款匯率"}</FieldLabel>
+                <input type="number" value={loanFxRate.toFixed(2)}
+                  onChange={(e) => setLoanFxRate(Number(e.target.value) || 7.85)}
+                  style={{
+                    ...inputStyle(styles),
+                    opacity: currency === "HKD" ? 0.5 : 1,
+                  }}
+                  step="0.01"
+                  disabled={currency === "HKD"} />
+                <FieldHint styles={styles}>
+                  {currency === "HKD"
+                    ? (lang === "tc" ? "HKD 保單不適用" : "N/A for HKD policy")
+                    : (lang === "tc" ? "Excel E6 — 融資 HKD 換算" : "Excel E6 — loan HKD conversion")}
+                </FieldHint>
+              </div>
+            </div>
+
+            {/* Row 3: Fulfillment Ratio (full-width slider) */}
+            <div style={{ marginTop: 18 }}>
+              <FieldLabel styles={styles}>
+                {t.fulfillmentRatio || "派發比率 (FR)"}
+              </FieldLabel>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <input type="range"
+                  min="50" max="120" step="5"
+                  value={Math.round(fulfillmentRatio * 100)}
+                  onChange={(e) => setFulfillmentRatio(Number(e.target.value) / 100)}
+                  style={{
+                    flex: 1,
+                    accentColor: fulfillmentRatio < 1 ? styles.danger : styles.accent,
+                  }} />
+                <input type="number"
+                  value={Math.round(fulfillmentRatio * 100)}
+                  onChange={(e) => setFulfillmentRatio(Number(e.target.value) / 100)}
+                  style={{
+                    ...inputStyle(styles),
+                    width: 90,
+                    fontSize: 16, fontWeight: 600,
+                    color: fulfillmentRatio === 1 ? styles.success
+                      : (fulfillmentRatio < 1 ? styles.danger : styles.accent),
+                  }}
+                  min="0" max="200" step="5" />
+                <span style={{ fontSize: 14, color: styles.inkSoft, fontFamily: styles.fontMono }}>%</span>
+              </div>
+              <div style={{
+                display: "flex", justifyContent: "space-between",
+                fontSize: 10, color: styles.inkSoft, fontFamily: styles.fontMono,
+                marginTop: 4, paddingRight: 116,
+              }}>
+                <span>50% (悲觀)</span>
+                <span>100% (illustration)</span>
+                <span>120% (樂觀)</span>
+              </div>
+              <FieldHint styles={styles}>
+                {lang === "tc"
+                  ? "Excel C10 — 保險公司實際派發紅利相對於 illustration 嘅比率；只影響非保證價值 (NGV)"
+                  : "Excel C10 — Insurer's actual bonus payout vs illustration; affects NGV only"}
+              </FieldHint>
+              {fulfillmentRatio !== 1 && (
+                <div style={{
+                  marginTop: 8, padding: "6px 10px",
+                  backgroundColor: fulfillmentRatio < 1 ? "#FFEBEE" : "#FFF4E6",
+                  borderLeft: `3px solid ${fulfillmentRatio < 1 ? styles.danger : styles.accent}`,
+                  fontSize: 11, color: styles.ink, borderRadius: "2px",
+                }}>
+                  {fulfillmentRatio < 1
+                    ? (lang === "tc"
+                        ? `⚠ FR ${fmtPct(fulfillmentRatio, 0)}（悲觀情境壓力測試 — 紅利打折）`
+                        : `⚠ FR ${fmtPct(fulfillmentRatio, 0)} (pessimistic stress — bonuses haircut)`)
+                    : (lang === "tc"
+                        ? `★ FR ${fmtPct(fulfillmentRatio, 0)}（樂觀情境）`
+                        : `★ FR ${fmtPct(fulfillmentRatio, 0)} (optimistic scenario)`)}
+                </div>
+              )}
             </div>
           </div>
 
@@ -869,11 +1174,11 @@ export default function PremiumFinancingApp() {
           )}
         </div>
 
-        {/* ═══════════════════ RATE ASSUMPTIONS (SIMPLIFIED) ═══════════════════ */}
+        {/* ═══════════════════ SECTION 03 — RATE ASSUMPTIONS ═══════════════════ */}
         <SectionLabel num="03" label={t.rateSection} styles={styles} />
         <div className="pf-card no-print" style={cardStyle(styles)}>
 
-          {/* SIMPLE MODE — Just one field */}
+          {/* Row 1: Loan Rate + Premium Discount with auto-tier toggle */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
             <div>
               <FieldLabel styles={styles}>{t.loanRate} (%)</FieldLabel>
@@ -923,105 +1228,119 @@ export default function PremiumFinancingApp() {
 
             <div>
               <FieldLabel styles={styles}>{t.premiumDiscount} (%)</FieldLabel>
-              <input type="number" value={(discount * 100).toFixed(1)}
-                onChange={(e) => setCustomDiscount(Number(e.target.value) / 100)}
-                style={inputStyle(styles)} step="0.5" />
+              <input type="number"
+                value={(discount * 100).toFixed(1)}
+                onChange={(e) => {
+                  setCustomDiscount(Number(e.target.value) / 100);
+                  setDiscountAutoTier(false);
+                }}
+                style={{
+                  ...inputStyle(styles),
+                  backgroundColor: discountAutoTier ? "#FFF4E6" : "#FFF",
+                }}
+                step="0.5" />
+
+              {/* Auto-tier checkbox */}
+              <label style={{
+                display: "flex", alignItems: "center", gap: 6,
+                marginTop: 6, fontSize: 11, cursor: "pointer",
+                color: styles.ink,
+              }}>
+                <input type="checkbox" checked={discountAutoTier}
+                  onChange={(e) => setDiscountAutoTier(e.target.checked)}
+                  style={{ accentColor: styles.accent }} />
+                <span style={{ fontWeight: 600 }}>
+                  {lang === "tc" ? "自動分層" : "Auto-tier"}
+                </span>
+                <span style={{ color: styles.inkSoft }}>
+                  {lang === "tc" ? "(< HK$300萬: 5% / ≥ HK$300萬: 7%)" : "(< HKD 3M: 5% / ≥ HKD 3M: 7%)"}
+                </span>
+              </label>
+
               <FieldHint styles={styles}>
-                {lang === "tc" ? "FWD 對保費融資客戶的折扣（一般 5%）" : "FWD's premium discount for PF clients (typically 5%)"}
+                {discountAutoTier
+                  ? (lang === "tc"
+                      ? `自動分層中（保費 ${currency === "HKD" ? "HK$" + fmtCompact(premium) : "≈ HK$" + fmtCompact(premiumInHKD)} → ${(autoDiscount * 100).toFixed(0)}%）`
+                      : `Auto-tier active (premium ${currency === "HKD" ? "HK$" + fmtCompact(premium) : "≈ HK$" + fmtCompact(premiumInHKD)} → ${(autoDiscount * 100).toFixed(0)}%)`)
+                  : (lang === "tc" ? "FWD 對保費融資客戶的折扣（一般 5%）" : "FWD's premium discount for PF clients (typically 5%)")}
               </FieldHint>
             </div>
           </div>
 
-          {/* ADVANCED TOGGLE */}
+          {/* Row 2: Future Rate Change (no longer hidden, directly visible) */}
           <div style={{
-            marginTop: 24, paddingTop: 16,
-            borderTop: `1px dashed ${styles.border}`,
+            marginTop: 20, paddingTop: 20,
+            borderTop: `1px solid ${styles.border}`,
           }}>
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              style={{
-                background: "none", border: "none",
-                color: styles.inkSoft, fontSize: 12, fontWeight: 600,
-                cursor: "pointer", padding: 0,
-                fontFamily: styles.fontBody,
-                display: "flex", alignItems: "center", gap: 8,
-                letterSpacing: "0.03em",
-              }}>
-              <span style={{
-                display: "inline-block", width: 16, height: 16,
-                lineHeight: "14px", textAlign: "center",
-                border: `1px solid ${styles.border}`, borderRadius: "2px",
-                fontSize: 12, color: styles.accent,
-              }}>{showAdvanced ? "−" : "+"}</span>
-              {showAdvanced ? t.hideAdvanced : t.showAdvanced} · {t.advancedSettings}
-              <span style={{ color: styles.inkSoft, fontWeight: 400, fontSize: 11 }}>
-                ({t.advancedHint})
-              </span>
-            </button>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: 16, alignItems: "start" }}>
+              {/* Tier toggle */}
+              <div>
+                <FieldLabel styles={styles}>{t.enableTier}</FieldLabel>
+                <label style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  fontSize: 13, cursor: "pointer", padding: "8px 12px",
+                  backgroundColor: tierEnabled ? "#FFF4E6" : "#FFF",
+                  border: `1px solid ${tierEnabled ? styles.accent : styles.border}`,
+                  borderRadius: "2px", fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}>
+                  <input type="checkbox" checked={tierEnabled}
+                    onChange={(e) => setTierEnabled(e.target.checked)}
+                    style={{ accentColor: styles.accent, transform: "scale(1.1)" }} />
+                  {tierEnabled
+                    ? (lang === "tc" ? "已啟用" : "Active")
+                    : (lang === "tc" ? "未啟用" : "Inactive")}
+                </label>
+              </div>
 
-            {showAdvanced && (
+              {/* Tier inputs (always rendered but disabled when not enabled) */}
+              <div>
+                <FieldLabel styles={styles}>{t.tierYear}</FieldLabel>
+                <input type="number" value={tierYear}
+                  onChange={(e) => setTierYear(Number(e.target.value))}
+                  style={{
+                    ...inputStyle(styles),
+                    opacity: tierEnabled ? 1 : 0.4,
+                  }}
+                  min={1} max={113} disabled={!tierEnabled} />
+              </div>
+              <div>
+                <FieldLabel styles={styles}>{t.rateAfterTier} (%)</FieldLabel>
+                <input type="number" value={(tierRateInput * 100).toFixed(2)}
+                  onChange={(e) => setTierRateInput(Number(e.target.value) / 100)}
+                  style={{
+                    ...inputStyle(styles),
+                    opacity: tierEnabled ? 1 : 0.4,
+                  }}
+                  step="0.05" disabled={!tierEnabled} />
+              </div>
+            </div>
+
+            {!tierEnabled && (
               <div style={{
-                marginTop: 16, padding: 16,
-                backgroundColor: "#FAFAF7", borderRadius: "2px",
-                border: `1px solid ${styles.border}`,
+                marginTop: 10, fontSize: 11, color: styles.inkSoft, fontStyle: "italic",
               }}>
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: 16, alignItems: "center" }}>
-                  {/* Tier toggle */}
-                  <label style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    fontSize: 13, cursor: "pointer", padding: "8px 12px",
-                    backgroundColor: tierEnabled ? "#FFF4E6" : "#FFF",
-                    border: `1px solid ${tierEnabled ? styles.accent : styles.border}`,
-                    borderRadius: "2px", fontWeight: 600,
-                  }}>
-                    <input type="checkbox" checked={tierEnabled}
-                      onChange={(e) => setTierEnabled(e.target.checked)}
-                      style={{ accentColor: styles.accent, transform: "scale(1.1)" }} />
-                    {t.enableTier}
-                  </label>
+                {lang === "tc"
+                  ? "啟用後可假設未來某年利率改變（例：頭 18 年 4.85%，之後 3.15%）— 用於壓力測試或反映預期降息"
+                  : "Enable to model a future rate change (e.g., Y1-Y18 at 4.85%, then 3.15%) — for stress test or rate-cut scenarios"}
+              </div>
+            )}
 
-                  {/* Tier inputs (only if enabled) */}
-                  {tierEnabled ? (
-                    <>
-                      <div>
-                        <FieldLabel styles={styles}>{t.tierYear}</FieldLabel>
-                        <input type="number" value={tierYear}
-                          onChange={(e) => setTierYear(Number(e.target.value))}
-                          style={inputStyle(styles)} min={1} max={113} />
-                      </div>
-                      <div>
-                        <FieldLabel styles={styles}>{t.rateAfterTier} (%)</FieldLabel>
-                        <input type="number" value={(tierRateInput * 100).toFixed(2)}
-                          onChange={(e) => setTierRateInput(Number(e.target.value) / 100)}
-                          style={inputStyle(styles)} step="0.05" />
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ gridColumn: "span 2", fontSize: 12, color: styles.inkSoft, fontStyle: "italic" }}>
-                      {lang === "tc"
-                        ? "啟用後可假設未來某年利率改變（例：頭 18 年 4.85%，之後 3.15%）— 用於壓力測試或反映預期降息。"
-                        : "Enable to model a future rate change (e.g., Y1-Y18 at 4.85%, then 3.15%) — useful for stress test or rate-cut scenarios."}
-                    </div>
-                  )}
-                </div>
-
-                {tierEnabled && (
-                  <div style={{
-                    marginTop: 12, padding: "8px 12px",
-                    backgroundColor: "#FFF4E6", borderLeft: `3px solid ${styles.accent}`,
-                    borderRadius: "2px", fontSize: 12,
-                  }}>
-                    <strong>{lang === "tc" ? "利率示意：" : "Schedule: "}</strong>
-                    Y1{!isCustom && bank.capRate && bank.capYears > 0 ? `-Y${bank.capYears}` : ""} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(rateForYear(1))}</span>
-                    {!isCustom && bank.capRate && bank.capYears > 0 && bank.capYears < tierYear && (
-                      <> · Y{bank.capYears + 1}-Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(loanRate)}</span></>
-                    )}
-                    {(isCustom || !bank.capRate || bank.capYears === 0) && tierYear > 1 && (
-                      <> -Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(loanRate)}</span></>
-                    )}
-                    {" · "}Y{tierYear + 1}+ <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(tierRateInput)}</span>
-                  </div>
+            {tierEnabled && (
+              <div style={{
+                marginTop: 12, padding: "8px 12px",
+                backgroundColor: "#FFF4E6", borderLeft: `3px solid ${styles.accent}`,
+                borderRadius: "2px", fontSize: 12,
+              }}>
+                <strong>{lang === "tc" ? "利率示意：" : "Schedule: "}</strong>
+                Y1{!isCustom && bank.capRate && bank.capYears > 0 ? `-Y${bank.capYears}` : ""} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(rateForYear(1))}</span>
+                {!isCustom && bank.capRate && bank.capYears > 0 && bank.capYears < tierYear && (
+                  <> · Y{bank.capYears + 1}-Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(loanRate)}</span></>
                 )}
+                {(isCustom || !bank.capRate || bank.capYears === 0) && tierYear > 1 && (
+                  <> -Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(loanRate)}</span></>
+                )}
+                {" · "}Y{tierYear + 1}+ <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(tierRateInput)}</span>
               </div>
             )}
           </div>
@@ -1036,7 +1355,10 @@ export default function PremiumFinancingApp() {
           <MetricCard label={t.totalPremium} value={fmtCurrency(premium, currency)} styles={styles} />
           <MetricCard label={t.day1SV} value={fmtCurrency(calc.day1SV, currency)} styles={styles} />
           <MetricCard label={t.financingAmount} value={fmtCurrency(calc.financing, currency)} styles={styles} accent />
-          <MetricCard label={t.initialOutlay} value={fmtCurrency(calc.initialOutlay, currency)} styles={styles} highlight />
+          <MetricCard
+            label={t.initialOutlay + (initialOutlayMode === "manual" ? " ✎" : "")}
+            value={fmtCurrency(calc.initialOutlay, currency)}
+            styles={styles} highlight />
           <MetricCard label={t.annualInterest} value={fmtCurrency(calc.year1Interest, currency)} styles={styles} />
           <MetricCard label={t.leverage} value={`${calc.leverage.toFixed(2)}×`} styles={styles} />
         </div>
@@ -1717,7 +2039,7 @@ export default function PremiumFinancingApp() {
           fontSize: 11, color: styles.inkSoft, fontFamily: styles.fontMono,
           letterSpacing: "0.05em",
         }}>
-          FWD INSURANCE · PREMIUM FINANCING DEMO v5.0 · INTERNAL USE ONLY
+          FWD INSURANCE · PREMIUM FINANCING DEMO v7.0 · INTERNAL USE ONLY
         </footer>
       </main>
     </div>

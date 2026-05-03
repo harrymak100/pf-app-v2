@@ -1,73 +1,58 @@
 import React, { useState, useMemo, useEffect } from "react";
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, ComposedChart,
+  ScatterChart, Scatter, ZAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  ReferenceLine, Cell
+  ReferenceLine, ReferenceArea, Cell
 } from "recharts";
 
 /* =============================================================================
- * FWD PREMIUM FINANCING PROFESSIONAL DEMO  ·  v3.0
- * Built for: 麥希榮 (Harry Mak) · FWD Insurance Hong Kong
+ * FWD PREMIUM FINANCING PROFESSIONAL DEMO  ·  v5.0
+ * FWD Insurance Hong Kong
  * Products: Wealth ICON Horizon (WIH) · Wealth ICON Supreme III (WIS3)
  * =============================================================================
  *
- * V3 KEY CHANGE — ROI → IRR
- * --------------------------
- * ROI (cumulative %) replaced by IRR (annualised %) — industry standard for insurance.
- * Two IRR metrics now displayed:
- *   • IRR (Levered)  — with premium financing, may exceed 7% (leverage effect)
- *   • IRR (Cash)     — without financing, capped at 7% by IA illustration rules
+ * V5 KEY CHANGE — SIMPLIFIED RATE INPUT (for entry-level consultants)
+ * -------------------------------------------------------------------
+ * Rate Assumptions section redesigned:
+ *   • DEFAULT (Simple Mode): Just ONE field — "Annual Loan Rate"
+ *     - Bank selection auto-fills its currently-published rate
+ *     - User can override directly (no need to understand HIBOR/spread/cap)
+ *   • OPTIONAL (Advanced Mode): Hidden behind toggle, exposes:
+ *     - Cap during early years
+ *     - Tier rate schedule (Y1-N rate1, Y(N+1)+ rate2)
  *
- * REGULATORY NOTE: The 7% IRR illustration cap applies to the underlying policy's
- * non-guaranteed return (cash basis). Post-leverage IRR can legitimately exceed 7%
- * because that is the inherent value proposition of premium financing.
- *
- * IRR CALCULATION (matches Excel TIRR via bisection)
- * --------------------------------------------------
- * Verified against Excel Y1-Y20 With PF TIRR values (8/9 exact match; Y2 returns
- * the practical root −47% instead of Excel's mathematical alt-root −157%).
- *
- * Cash flow construction (surrender at year N):
- *   With PF:    [-InitialOutlay, -Int_1, -Int_2, ..., -Int_(N-1), TSV - Loan - Int_N]
- *   Without PF: [-Premium,        0,      0,    ...,  0,          TSV]
- *
- * Inherited from V2:
- * • KPI compact format ($1.55M)
- * • HIBOR/SOFR live input for stress testing
- * • Multi-tier rate schedule (Y1-N rate1, Y(N+1)+ rate2)
- * • Print/PDF export, view range selector
- * • Both products full Y1-Y114 lifetime data
+ * Inherited from V4: Cash vs PF side-by-side comparison, opportunity cost chart
+ * Inherited from V3: IRR replaces ROI (industry standard)
+ * Inherited from V2: Print/PDF, full Y114 lifetime data
  *
  * MAINTENANCE — UPDATE BANK RATES
  * --------------------------------
- * Edit BANK_PLATFORMS only. Each bank uses spread-based pricing:
- *   { id, name_*, ltv, spreadHKD, spreadUSD, capRate, capYears, setupFee, notes_* }
- * Effective rate = baseRate (HIBOR/SOFR) + spread (capped if applicable).
+ * Edit BANK_PLATFORMS.publishedRateHKD / publishedRateUSD when banks update
+ * their public rate sheets. The simple-mode "Loan Rate" field will auto-populate.
  *
- * VALIDATION CHECKPOINTS (Excel cross-checks)
- * -------------------------------------------
- * Excel HKD: Premium 503,200.7, LTV 90%, R1=4.85% Y1-Y18, R2=3.15% Y19+
- *   Y5 IRR  = 4.02% ✓     Y10 IRR = 6.96% ✓
- *   Y15 IRR = 6.60% ✓     Y19 IRR = 7.08% ✓
- *   Y20 IRR = 7.22% ✓ (exceeds 7% cap — proof of leverage value)
+ * VALIDATION (Excel cross-checks, HKD scenario 4.85%/3.15% tier)
+ * --------------------------------------------------------------
+ * Y5  IRR = 4.02% ✓     Y10 IRR = 6.96% ✓
+ * Y15 IRR = 6.60% ✓     Y20 IRR = 7.22% ✓ (proves leverage uplift)
  * ============================================================================= */
 
 // ─── BANK PLATFORMS (last updated 2026-04-24) ────────────────────────────────
-// Spread-based pricing structure for HIBOR/SOFR stress testing
+// Simplified: publishedRateHKD/USD = current effective rate the bank is charging.
+// This is what the consultant sees when they call/email the bank.
+// To update: Just change publishedRateHKD/USD when banks publish new rates.
 const BANK_PLATFORMS = {
   shacombank: {
     id: "shacombank",
     name_tc: "上海商業銀行",
     name_en: "Shanghai Commercial Bank",
     ltv: 0.90,
-    spreadHKD: 0.009,    // H(1m) + 0.9%
-    spreadUSD: null,
-    capRate: 0.038,      // First 2-year cap at 3.8%
+    publishedRateHKD: 0.0349,    // Current effective HKD rate
+    publishedRateUSD: null,       // Not offering USD financing
+    capRate: 0.038,               // Year 1-2 capped at 3.8%
     capYears: 2,
     setupFee: 0,
-    rateFormula_tc: "H(1m) + 0.9%（首2年封頂 3.8%）",
-    rateFormula_en: "H(1m) + 0.9% (Cap 3.8% first 2Y)",
-    notes_tc: "首2年利率封頂；無上限費；最高貸款 3,000萬港元",
+    notes_tc: "首2年利率封頂 3.8%；無上限費；最高貸款 3,000萬港元",
     notes_en: "Year 1-2 cap at 3.8%, no setup fee, max loan HKD 30M",
   },
   citic: {
@@ -75,13 +60,11 @@ const BANK_PLATFORMS = {
     name_tc: "中信銀行（國際）",
     name_en: "China CITIC Bank International",
     ltv: 0.90,
-    spreadHKD: 0.014,
-    spreadUSD: null,
+    publishedRateHKD: 0.0399,
+    publishedRateUSD: null,
     capRate: null,
     capYears: 0,
     setupFee: 0,
-    rateFormula_tc: "H(1m) + 1.4%",
-    rateFormula_en: "H(1m) + 1.4%",
     notes_tc: "CITICdiamond 留存資產 100萬港元；簡易申請",
     notes_en: "CITICdiamond requires HKD 1M AUM; streamlined process",
   },
@@ -90,13 +73,11 @@ const BANK_PLATFORMS = {
     name_tc: "天星銀行（AirStar）",
     name_en: "AirStar Bank",
     ltv: 0.90,
-    spreadHKD: 0.015,
-    spreadUSD: null,
+    publishedRateHKD: 0.0409,
+    publishedRateUSD: null,
     capRate: null,
     capYears: 0,
     setupFee: 0.0025,
-    rateFormula_tc: "H(1m) + 1.5%（含 0.25% 手續費）",
-    rateFormula_en: "H(1m) + 1.5% (incl. 0.25% handling fee)",
     notes_tc: "純線上虛擬銀行；最快速申請流程",
     notes_en: "Pure online virtual bank; fastest application",
   },
@@ -105,13 +86,11 @@ const BANK_PLATFORMS = {
     name_tc: "華僑銀行（OCBC）",
     name_en: "OCBC Hong Kong",
     ltv: 0.90,
-    spreadHKD: 0.012,
-    spreadUSD: 0.020,
+    publishedRateHKD: 0.0379,
+    publishedRateUSD: 0.0480,
     capRate: null,
     capYears: 0,
     setupFee: 0.003,
-    rateFormula_tc: "H(1m) + 1.2% / SOFR + 2.0%",
-    rateFormula_en: "H(1m) + 1.2% / SOFR + 2.0%",
     notes_tc: "需開立 Premier 戶口；接受 USD 與 HKD 保單",
     notes_en: "Premier account required; accepts USD & HKD policies",
   },
@@ -120,13 +99,11 @@ const BANK_PLATFORMS = {
     name_tc: "星展銀行（DBS）",
     name_en: "DBS Hong Kong",
     ltv: 0.90,
-    spreadHKD: 0.012,
-    spreadUSD: 0.006,
+    publishedRateHKD: 0.0379,
+    publishedRateUSD: 0.0480,
     capRate: null,
     capYears: 0,
     setupFee: 0.0025,
-    rateFormula_tc: "H(1m) + 1.2% / SOFR + 0.6%",
-    rateFormula_en: "H(1m) + 1.2% / SOFR + 0.6%",
     notes_tc: "Treasures 客戶可享優惠；最高貸款 4,000萬港元",
     notes_en: "Treasures clients enjoy promo; max loan HKD 40M",
   },
@@ -135,28 +112,24 @@ const BANK_PLATFORMS = {
     name_tc: "大新銀行",
     name_en: "Dah Sing Bank",
     ltv: 0.90,
-    spreadHKD: 0.012,
-    spreadUSD: 0.005,
+    publishedRateHKD: 0.0379,
+    publishedRateUSD: 0.0470,
     capRate: null,
     capYears: 0,
     setupFee: 0,
-    rateFormula_tc: "COF + 1.2% / USD: COF + 0.5%",
-    rateFormula_en: "COF + 1.2% / USD: COF + 0.5%",
     notes_tc: "VIP Banking 客戶；同貨幣 90% LTV，跨貨幣 90%×97%",
     notes_en: "VIP Banking; same-ccy 90% LTV, cross-ccy 90%×97%",
   },
   custom: {
     id: "custom",
-    name_tc: "自訂利率",
-    name_en: "Custom Rate",
+    name_tc: "自訂",
+    name_en: "Custom",
     ltv: 0.90,
-    spreadHKD: 0.020,
-    spreadUSD: 0.010,
+    publishedRateHKD: 0.0400,
+    publishedRateUSD: 0.0500,
     capRate: null,
     capYears: 0,
     setupFee: 0,
-    rateFormula_tc: "用戶自定 LTV 與利率",
-    rateFormula_en: "User-defined LTV & rate",
     notes_tc: "手動輸入所有條款",
     notes_en: "Manually enter all terms",
   },
@@ -242,11 +215,12 @@ const I18N = {
   tc: {
     appTitle: "保費融資專業演示",
     appSubtitle: "Premium Financing Demonstration · 富衛人壽 Wealth ICON 系列",
-    consultant: "FWD 理財顧問 · 麥希榮",
+    consultant: "FWD 理財顧問",
     productSection: "產品選擇",
     inputSection: "個案參數",
     rateSection: "利率假設",
     summarySection: "融資結構概覽",
+    comparisonSection: "全現金 vs 保費融資 並排對比",
     chartsSection: "視覺化分析",
     tableSection: "逐年詳細數據",
     disclaimerSection: "重要聲明",
@@ -258,17 +232,19 @@ const I18N = {
     interestRate: "貸款年利率",
     premiumDiscount: "保費折扣",
     setupFee: "開設費",
-    rateFormula: "利率公式",
     bankNotes: "備註",
-    hibor: "HIBOR (1m)",
-    sofr: "SOFR (1m)",
-    baseRate: "基準利率",
-    spread: "Spread",
-    effectiveRate: "實際適用利率",
-    capInfo: "首期封頂",
-    enableTier: "啟用分段利率",
-    tierYear: "分段切換年度",
-    tierRate: "後段年利率",
+    loanRate: "貸款年利率",
+    loanRateHint: "選擇銀行後會自動填入該行公布利率，您亦可手動修改",
+    advancedSettings: "進階設定",
+    advancedHint: "壓力測試 / 假設未來利率變化（可選）",
+    showAdvanced: "顯示進階",
+    hideAdvanced: "隱藏進階",
+    earlyCap: "首期封頂利率",
+    earlyCapHint: "部份銀行於頭幾年提供利率封頂",
+    enableTier: "啟用未來利率調整",
+    tierYear: "於第幾年改變利率",
+    tierRate: "之後年利率",
+    rateAfterTier: "後段假設利率",
     viewRange: "顯示年期範圍",
     print: "列印 / 匯出 PDF",
 
@@ -307,11 +283,32 @@ const I18N = {
     netSurrender: "退保後淨額",
     yearUnit: "年",
 
+    // Comparison section
+    cmpAllCash: "全現金投保",
+    cmpWithPF: "保費融資",
+    cmpDelta: "差距",
+    cmpUpfront: "前期投入現金",
+    cmpCashFreed: "釋出現金",
+    cmpAnnualBurden: "每年支出",
+    cmpTotalCost: "累積總成本",
+    cmpNetWealth: "淨資產（退保時）",
+    cmpIRR: "年化回報 IRR",
+    cmpLeverageGain: "槓桿溢價",
+
+    chartCompareTitle: "雙軌財富累積比較",
+    chartCompareSub: "相同保費下，兩種策略的口袋實值",
+    chartLeverageTitle: "槓桿效益散點圖",
+    chartLeverageSub: "每點代表一個保單年度",
+    chartOppCostTitle: "機會成本分析",
+    chartOppCostSub: "保費融資 + 剩餘現金做其他投資 vs 全現金投保",
+    altReturn: "剩餘資金假設年回報率",
+    altReturnHint: "假設您將融資釋出的現金投資於股票/基金/REIT 等",
+
     disclaimer: [
       "本演示僅供內部參考及客戶展示用途，數據基於官方 illustration 及預設假設計算。",
       "Fulfillment Ratio (FR) 假設為 100%，實際派發紅利並非保證，可能高於或低於演示數值。",
       "保監局訂明保險產品 illustration 的非保證部分 IRR cap 為 7%，此限制適用於產品本身（即全現金投保）的 IRR。使用保費融資後，由於槓桿效應，融資後的有效 IRR 可超過 7%，這並不違反監管要求 — 槓桿放大正是保費融資的本質。",
-      "HIBOR / SOFR 隨市場浮動，分段利率假設僅作壓力測試參考；實際利息支出可能上升或下降。",
+      "貸款利率隨銀行政策及市場 HIBOR/SOFR 浮動，本演示假設利率不變；實際利息支出可能上升或下降，需配合進階設定的「未來利率調整」做壓力測試。",
       "保費融資涉及槓桿風險，當保單退保價值不足以償還貸款時，客戶須補倉或追加抵押。",
       "外幣保單須承擔匯率風險（USD/HKD 聯繫匯率以外的貨幣對沖風險）。",
       "客戶應諮詢專業稅務及法律意見，特別涉及跨境身份（CRS/AEOI 申報）。",
@@ -329,11 +326,12 @@ const I18N = {
   en: {
     appTitle: "Premium Financing Demo",
     appSubtitle: "FWD Wealth ICON Series · Professional Sales Tool",
-    consultant: "FWD Consultant · Harry Mak",
+    consultant: "FWD Consultant",
     productSection: "Product Selection",
     inputSection: "Case Parameters",
     rateSection: "Rate Assumptions",
     summarySection: "Financing Structure Overview",
+    comparisonSection: "All-Cash vs Premium Financing — Side-by-Side",
     chartsSection: "Visual Analysis",
     tableSection: "Year-by-Year Detail",
     disclaimerSection: "Important Disclaimers",
@@ -345,17 +343,19 @@ const I18N = {
     interestRate: "Annual Loan Rate",
     premiumDiscount: "Premium Discount",
     setupFee: "Setup Fee",
-    rateFormula: "Rate Formula",
     bankNotes: "Notes",
-    hibor: "HIBOR (1m)",
-    sofr: "SOFR (1m)",
-    baseRate: "Base Rate",
-    spread: "Spread",
-    effectiveRate: "Effective Rate",
-    capInfo: "Initial Cap",
-    enableTier: "Enable Tier Rate",
-    tierYear: "Tier Switch Year",
-    tierRate: "Post-Tier Rate",
+    loanRate: "Annual Loan Rate",
+    loanRateHint: "Auto-filled with bank's published rate; manually editable",
+    advancedSettings: "Advanced Settings",
+    advancedHint: "Stress test / future rate change assumption (optional)",
+    showAdvanced: "Show Advanced",
+    hideAdvanced: "Hide Advanced",
+    earlyCap: "Early-Year Cap",
+    earlyCapHint: "Some banks cap rate during initial years",
+    enableTier: "Assume Rate Change",
+    tierYear: "Rate Change at Year",
+    tierRate: "Rate After Change",
+    rateAfterTier: "Assumed Future Rate",
     viewRange: "Display Range",
     print: "Print / Export PDF",
 
@@ -394,11 +394,32 @@ const I18N = {
     netSurrender: "Net After Surrender",
     yearUnit: "Yr",
 
+    // Comparison section
+    cmpAllCash: "All-Cash Strategy",
+    cmpWithPF: "With Premium Financing",
+    cmpDelta: "Delta",
+    cmpUpfront: "Upfront Cash",
+    cmpCashFreed: "Cash Freed Up",
+    cmpAnnualBurden: "Annual Outflow",
+    cmpTotalCost: "Total Cost (Cum.)",
+    cmpNetWealth: "Net Wealth (at Surrender)",
+    cmpIRR: "Annualised IRR",
+    cmpLeverageGain: "Leverage Premium",
+
+    chartCompareTitle: "Wealth Accumulation — Side by Side",
+    chartCompareSub: "Same premium, two strategies — net pocket value",
+    chartLeverageTitle: "Leverage Efficiency Scatter",
+    chartLeverageSub: "Each point = one policy year",
+    chartOppCostTitle: "Opportunity Cost Analysis",
+    chartOppCostSub: "PF + invested freed cash vs All-Cash policy",
+    altReturn: "Assumed Return on Freed Cash",
+    altReturnHint: "Assumes freed cash invested in equities/funds/REITs",
+
     disclaimer: [
       "This demo is for internal & client presentation use only; figures based on official illustration with stated assumptions.",
       "Fulfillment Ratio (FR) assumed at 100%; actual non-guaranteed bonuses may differ.",
       "IA's 7% IRR illustration cap applies to the underlying policy's non-guaranteed return on a cash basis. Post-leverage IRR can legitimately exceed 7% — this is the inherent value of premium financing and does not violate regulations.",
-      "HIBOR/SOFR floats with market; tier rates are stress-test assumptions only — actual interest may rise or fall.",
+      "Loan rates float with bank policy and market HIBOR/SOFR; this demo assumes rate stays constant. Use the Advanced 'Rate Change' option for stress testing.",
       "Premium financing carries leverage risk: if surrender value falls below loan, top-up may be required.",
       "Foreign-currency policies bear FX risk beyond the USD/HKD peg framework.",
       "Clients should obtain independent tax & legal advice (esp. for cross-border CRS/AEOI matters).",
@@ -509,15 +530,17 @@ export default function PremiumFinancingApp() {
   const [currency, setCurrency] = useState("USD");
   const [bankKey, setBankKey] = useState("shacombank");
   const [customLTV, setCustomLTV] = useState(0.90);
-  const [customSpread, setCustomSpread] = useState(0.020);
   const [customDiscount, setCustomDiscount] = useState(0.05);
-  // HIBOR / SOFR base rates
-  const [hiborRate, setHiborRate] = useState(0.0259);  // ~2.59% market reference
-  const [sofrRate, setSofrRate] = useState(0.0420);    // ~4.20% market reference
-  // Tier rate (multi-year segmented)
+  // SIMPLIFIED: One loan rate field that auto-syncs from bank but is user-editable
+  const [loanRate, setLoanRate] = useState(0.0349);  // matches default bank (Shacombank HKD)
+  const [rateOverridden, setRateOverridden] = useState(false); // tracks if user manually edited
+  // Advanced settings (collapsed by default)
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [tierEnabled, setTierEnabled] = useState(false);
   const [tierYear, setTierYear] = useState(18);
   const [tierRateInput, setTierRateInput] = useState(0.0315);
+  // Opportunity cost — alternative investment return for freed cash
+  const [altReturn, setAltReturn] = useState(0.05);
   // View
   const [highlightYear, setHighlightYear] = useState(10);
   const [viewRange, setViewRange] = useState(30);
@@ -531,19 +554,26 @@ export default function PremiumFinancingApp() {
   const ltv = isCustom ? customLTV : bank.ltv;
   const discount = customDiscount;
   const setupFeeRate = bank.setupFee || 0;
-  const baseRate = currency === "USD" ? sofrRate : hiborRate;
-  const spread = isCustom
-    ? customSpread
-    : (currency === "USD" && bank.spreadUSD !== null ? bank.spreadUSD : bank.spreadHKD);
-  // Note: when bank only supports HKD but user picks USD, fallback to HKD spread + show warning
-  const spreadAvailable = isCustom || (currency === "HKD" || bank.spreadUSD !== null);
 
-  // Year-aware effective rate
+  // Bank's published rate for the chosen currency
+  const bankPublishedRate = (currency === "USD" && bank.publishedRateUSD !== null)
+    ? bank.publishedRateUSD
+    : bank.publishedRateHKD;
+
+  // Auto-sync loan rate when bank/currency changes (unless user overrode)
+  useEffect(() => {
+    setLoanRate(bankPublishedRate);
+    setRateOverridden(false);
+  }, [bankKey, currency]);
+
+  // Year-aware effective rate (uses simple loan rate; cap & tier are advanced)
   const rateForYear = (y) => {
-    let r = baseRate + spread;
+    let r = loanRate;
+    // Apply early-year cap if bank publishes one (auto, no user input needed)
     if (!isCustom && bank.capRate && y <= bank.capYears) {
       r = Math.min(r, bank.capRate);
     }
+    // Apply tier rate if user enabled in advanced mode
     if (tierEnabled && y > tierYear) {
       r = tierRateInput;
     }
@@ -583,9 +613,6 @@ export default function PremiumFinancingApp() {
       const cashOnHand = scaledTSV - financing - cumInterest;
 
       // ─── IRR (Levered, with PF) ─────────────────────────────────────────
-      // CF[0] = -InitialOutlay
-      // CF[1..year-1] = -Interest[year]  (year-by-year, respects tier rate)
-      // CF[year] = TSV - Loan - Interest[year]
       const cfPF = [-initialOutlay];
       for (let y = 1; y < row.year; y++) {
         cfPF.push(-yearInterests[y - 1]);
@@ -594,15 +621,28 @@ export default function PremiumFinancingApp() {
       const irrPF = calculateIRR(cfPF);
 
       // ─── IRR (Cash, no PF) ──────────────────────────────────────────────
-      // CF[0] = -Premium, all interim = 0, CF[year] = TSV
-      // For single-period cash flows, this simplifies to (TSV/Premium)^(1/N) - 1
       let irrCash = null;
       if (scaledTSV > 0 && premium > 0) {
         irrCash = Math.pow(scaledTSV / premium, 1 / row.year) - 1;
       }
 
-      // IRR spread (the "leverage premium")
       const irrSpread = (irrPF !== null && irrCash !== null) ? irrPF - irrCash : null;
+
+      // ─── OPPORTUNITY COST: PF + freed cash invested at altReturn ────────
+      // Strategy A (All-Cash): premium → policy → TSV
+      // Strategy B (PF + Alt Invest):
+      //   Initial outlay → policy
+      //   (Premium - Initial outlay) = Cash freed up → grow at altReturn for N years
+      //   Each year, must service interest (deducted from alt investment)
+      //   At year N: TSV - Loan + alt investment value
+      const cashFreed = premium - initialOutlay;
+      // Compound the freed cash less annual interest payments
+      let altInvestValue = cashFreed;
+      for (let y = 1; y <= row.year; y++) {
+        altInvestValue = altInvestValue * (1 + altReturn) - yearInterests[y - 1];
+      }
+      const pfPlusAltNet = scaledTSV - financing + altInvestValue + premiumDiscountAmt - setupFeeAmt;
+      const allCashNet = scaledTSV;
 
       return {
         year: row.year,
@@ -618,6 +658,13 @@ export default function PremiumFinancingApp() {
         irrCash,
         irrSpread,
         cashOnHand,
+        // Comparison metrics (cash-vs-PF same scale, comparable)
+        netCashAllCash: scaledTSV,                     // All-cash: full TSV at hand if surrendered
+        netCashPF: scaledTSV - financing - cumInterest, // PF: TSV minus loan & cum interest
+        // Opportunity cost
+        pfPlusAltNet,
+        allCashNet,
+        oppGap: pfPlusAltNet - allCashNet,
       };
     });
 
@@ -630,7 +677,7 @@ export default function PremiumFinancingApp() {
       initialOutlay, year1Interest, leverage, projection,
       breakEvenPF, breakEvenCash,
     };
-  }, [premium, ltv, discount, setupFeeRate, baseRate, spread, isCustom, bank, tierEnabled, tierYear, tierRateInput, product]);
+  }, [premium, ltv, discount, setupFeeRate, loanRate, isCustom, bank, tierEnabled, tierYear, tierRateInput, altReturn, product]);
 
   // Filtered projection by view range
   const visibleProjection = useMemo(
@@ -798,12 +845,6 @@ export default function PremiumFinancingApp() {
                 onChange={(e) => isCustom && setCustomLTV(Number(e.target.value) / 100)}
                 disabled={!isCustom} style={{ ...inputStyle(styles), opacity: isCustom ? 1 : 0.6 }} step="5" />
             </div>
-            <div>
-              <FieldLabel styles={styles}>{t.premiumDiscount} (%)</FieldLabel>
-              <input type="number" value={(discount * 100).toFixed(1)}
-                onChange={(e) => setCustomDiscount(Number(e.target.value) / 100)}
-                style={inputStyle(styles)} step="0.5" />
-            </div>
           </div>
 
           {/* Bank info strip */}
@@ -812,19 +853,15 @@ export default function PremiumFinancingApp() {
               marginTop: 20, paddingTop: 16, borderTop: `1px solid ${styles.border}`,
               display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 24px", fontSize: 12,
             }}>
-              <span style={{ color: styles.inkSoft, fontWeight: 600 }}>{t.rateFormula}：</span>
-              <span style={{ fontFamily: styles.fontMono }}>
-                {lang === "tc" ? bank.rateFormula_tc : bank.rateFormula_en}
-              </span>
               <span style={{ color: styles.inkSoft, fontWeight: 600 }}>{t.bankNotes}：</span>
               <span>{lang === "tc" ? bank.notes_tc : bank.notes_en}</span>
-              {currency === "USD" && bank.spreadUSD === null && (
+              {currency === "USD" && bank.publishedRateUSD === null && (
                 <>
                   <span style={{ color: styles.danger, fontWeight: 600 }}>⚠</span>
                   <span style={{ color: styles.danger }}>
                     {lang === "tc"
-                      ? "此銀行不支援 USD 保單；當前使用 HKD spread 估算"
-                      : "This bank does not support USD policies; using HKD spread approximation"}
+                      ? "此銀行不支援 USD 保單；建議改選 OCBC、DBS 或大新銀行"
+                      : "This bank does not support USD policies; consider OCBC, DBS, or Dah Sing"}
                   </span>
                 </>
               )}
@@ -832,114 +869,162 @@ export default function PremiumFinancingApp() {
           )}
         </div>
 
-        {/* ═══════════════════ RATE ASSUMPTIONS ═══════════════════ */}
+        {/* ═══════════════════ RATE ASSUMPTIONS (SIMPLIFIED) ═══════════════════ */}
         <SectionLabel num="03" label={t.rateSection} styles={styles} />
         <div className="pf-card no-print" style={cardStyle(styles)}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 20 }}>
+
+          {/* SIMPLE MODE — Just one field */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
             <div>
-              <FieldLabel styles={styles}>
-                {currency === "USD" ? t.sofr : t.hibor} (%)
-              </FieldLabel>
-              <input type="number"
-                value={((currency === "USD" ? sofrRate : hiborRate) * 100).toFixed(2)}
-                onChange={(e) => {
-                  const v = Number(e.target.value) / 100;
-                  if (currency === "USD") setSofrRate(v);
-                  else setHiborRate(v);
-                }}
-                style={inputStyle(styles)} step="0.05" />
-              <FieldHint styles={styles}>
-                {lang === "tc" ? "市場基準利率（可調以做壓力測試）" : "Market base rate (adjust for stress test)"}
-              </FieldHint>
-            </div>
-            <div>
-              <FieldLabel styles={styles}>{t.spread} (%)</FieldLabel>
-              <input type="number"
-                value={(spread * 100).toFixed(2)}
-                onChange={(e) => isCustom && setCustomSpread(Number(e.target.value) / 100)}
-                disabled={!isCustom}
-                style={{ ...inputStyle(styles), opacity: isCustom ? 1 : 0.6 }} step="0.05" />
-              <FieldHint styles={styles}>
-                {lang === "tc" ? "銀行加點（自訂模式可調）" : "Bank spread (custom mode editable)"}
-              </FieldHint>
-            </div>
-            <div>
-              <FieldLabel styles={styles}>{t.effectiveRate}</FieldLabel>
-              <div style={{
-                ...inputStyle(styles),
-                backgroundColor: "#FFFAF3",
-                fontFamily: styles.fontMono, fontWeight: 600,
-                color: styles.accent, fontSize: 16,
-              }}>
-                {fmtPct(currentEffectiveRate)}
+              <FieldLabel styles={styles}>{t.loanRate} (%)</FieldLabel>
+              <div style={{ position: "relative" }}>
+                <input type="number"
+                  value={(loanRate * 100).toFixed(2)}
+                  onChange={(e) => {
+                    setLoanRate(Number(e.target.value) / 100);
+                    setRateOverridden(true);
+                  }}
+                  style={{
+                    ...inputStyle(styles),
+                    fontSize: 16, fontWeight: 600,
+                    color: styles.accent,
+                  }}
+                  step="0.05" />
+                {rateOverridden && (
+                  <button
+                    onClick={() => {
+                      setLoanRate(bankPublishedRate);
+                      setRateOverridden(false);
+                    }}
+                    style={{
+                      position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                      padding: "3px 8px", fontSize: 10, backgroundColor: styles.border,
+                      color: styles.ink, border: "none", borderRadius: "2px",
+                      cursor: "pointer", fontFamily: styles.fontBody, fontWeight: 600,
+                    }}
+                    title={lang === "tc" ? "重設為銀行公布利率" : "Reset to bank's published rate"}>
+                    ↻ {lang === "tc" ? "重設" : "Reset"}
+                  </button>
+                )}
               </div>
+              <FieldHint styles={styles}>{t.loanRateHint}</FieldHint>
               {!isCustom && bank.capRate && (
-                <FieldHint styles={styles}>
-                  {t.capInfo}：{fmtPct(bank.capRate)} × {bank.capYears} {t.yearUnit}
-                </FieldHint>
+                <div style={{
+                  marginTop: 8, padding: "6px 10px",
+                  backgroundColor: "#E8F3EE", borderLeft: `3px solid ${styles.success}`,
+                  fontSize: 11, color: styles.ink, borderRadius: "2px",
+                }}>
+                  ✓ {lang === "tc"
+                    ? `此銀行頭 ${bank.capYears} 年自動封頂於 ${fmtPct(bank.capRate)}`
+                    : `Bank auto-caps Year 1-${bank.capYears} at ${fmtPct(bank.capRate)}`}
+                </div>
               )}
             </div>
 
-            {/* Tier rate toggle */}
             <div>
-              <FieldLabel styles={styles}>{t.enableTier}</FieldLabel>
-              <div style={{
-                display: "flex", gap: 8, alignItems: "center",
-                padding: "8px 12px", border: `1px solid ${styles.border}`,
-                borderRadius: "2px", backgroundColor: "#FFF",
-              }}>
-                <input type="checkbox" id="tierToggle" checked={tierEnabled}
-                  onChange={(e) => setTierEnabled(e.target.checked)}
-                  style={{ accentColor: styles.accent, transform: "scale(1.1)" }} />
-                <label htmlFor="tierToggle" style={{ fontSize: 13, cursor: "pointer" }}>
-                  {tierEnabled
-                    ? (lang === "tc" ? "已啟用分段" : "Tier active")
-                    : (lang === "tc" ? "單一利率" : "Flat rate")}
-                </label>
-              </div>
+              <FieldLabel styles={styles}>{t.premiumDiscount} (%)</FieldLabel>
+              <input type="number" value={(discount * 100).toFixed(1)}
+                onChange={(e) => setCustomDiscount(Number(e.target.value) / 100)}
+                style={inputStyle(styles)} step="0.5" />
+              <FieldHint styles={styles}>
+                {lang === "tc" ? "FWD 對保費融資客戶的折扣（一般 5%）" : "FWD's premium discount for PF clients (typically 5%)"}
+              </FieldHint>
             </div>
-
-            {tierEnabled && (
-              <>
-                <div>
-                  <FieldLabel styles={styles}>{t.tierYear}</FieldLabel>
-                  <input type="number" value={tierYear}
-                    onChange={(e) => setTierYear(Number(e.target.value))}
-                    style={inputStyle(styles)} min={1} max={113} />
-                  <FieldHint styles={styles}>
-                    {lang === "tc" ? `Y1-Y${tierYear} 用主利率，Y${tierYear + 1}+ 用後段利率` : `Y1-Y${tierYear} primary, Y${tierYear + 1}+ secondary`}
-                  </FieldHint>
-                </div>
-                <div>
-                  <FieldLabel styles={styles}>{t.tierRate} (%)</FieldLabel>
-                  <input type="number" value={(tierRateInput * 100).toFixed(2)}
-                    onChange={(e) => setTierRateInput(Number(e.target.value) / 100)}
-                    style={inputStyle(styles)} step="0.05" />
-                  <FieldHint styles={styles}>
-                    {lang === "tc" ? "後期假設利率（如預期降息）" : "Post-tier assumed rate (e.g., rate cut scenario)"}
-                  </FieldHint>
-                </div>
-              </>
-            )}
           </div>
 
-          {tierEnabled && (
-            <div style={{
-              marginTop: 16, padding: "10px 14px", backgroundColor: "#FFF4E6",
-              border: `1px solid ${styles.accent}40`, borderLeft: `3px solid ${styles.accent}`,
-              borderRadius: "2px", fontSize: 12,
-            }}>
-              <strong>{lang === "tc" ? "分段利率示意" : "Tier Rate Schedule"}：</strong>
-              {" "}Y1{!isCustom && bank.capRate && bank.capYears > 0 ? `-Y${bank.capYears}` : ""} <span style={{ fontFamily: styles.fontMono, color: styles.accent }}>{fmtPct(rateForYear(1))}</span>
-              {!isCustom && bank.capRate && bank.capYears > 0 && (
-                <> · Y{bank.capYears + 1}-Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent }}>{fmtPct(baseRate + spread)}</span></>
-              )}
-              {(isCustom || !bank.capRate || bank.capYears === 0) && (
-                <> -Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent }}>{fmtPct(baseRate + spread)}</span></>
-              )}
-              {" · "}Y{tierYear + 1}+ <span style={{ fontFamily: styles.fontMono, color: styles.accent }}>{fmtPct(tierRateInput)}</span>
-            </div>
-          )}
+          {/* ADVANCED TOGGLE */}
+          <div style={{
+            marginTop: 24, paddingTop: 16,
+            borderTop: `1px dashed ${styles.border}`,
+          }}>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              style={{
+                background: "none", border: "none",
+                color: styles.inkSoft, fontSize: 12, fontWeight: 600,
+                cursor: "pointer", padding: 0,
+                fontFamily: styles.fontBody,
+                display: "flex", alignItems: "center", gap: 8,
+                letterSpacing: "0.03em",
+              }}>
+              <span style={{
+                display: "inline-block", width: 16, height: 16,
+                lineHeight: "14px", textAlign: "center",
+                border: `1px solid ${styles.border}`, borderRadius: "2px",
+                fontSize: 12, color: styles.accent,
+              }}>{showAdvanced ? "−" : "+"}</span>
+              {showAdvanced ? t.hideAdvanced : t.showAdvanced} · {t.advancedSettings}
+              <span style={{ color: styles.inkSoft, fontWeight: 400, fontSize: 11 }}>
+                ({t.advancedHint})
+              </span>
+            </button>
+
+            {showAdvanced && (
+              <div style={{
+                marginTop: 16, padding: 16,
+                backgroundColor: "#FAFAF7", borderRadius: "2px",
+                border: `1px solid ${styles.border}`,
+              }}>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: 16, alignItems: "center" }}>
+                  {/* Tier toggle */}
+                  <label style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    fontSize: 13, cursor: "pointer", padding: "8px 12px",
+                    backgroundColor: tierEnabled ? "#FFF4E6" : "#FFF",
+                    border: `1px solid ${tierEnabled ? styles.accent : styles.border}`,
+                    borderRadius: "2px", fontWeight: 600,
+                  }}>
+                    <input type="checkbox" checked={tierEnabled}
+                      onChange={(e) => setTierEnabled(e.target.checked)}
+                      style={{ accentColor: styles.accent, transform: "scale(1.1)" }} />
+                    {t.enableTier}
+                  </label>
+
+                  {/* Tier inputs (only if enabled) */}
+                  {tierEnabled ? (
+                    <>
+                      <div>
+                        <FieldLabel styles={styles}>{t.tierYear}</FieldLabel>
+                        <input type="number" value={tierYear}
+                          onChange={(e) => setTierYear(Number(e.target.value))}
+                          style={inputStyle(styles)} min={1} max={113} />
+                      </div>
+                      <div>
+                        <FieldLabel styles={styles}>{t.rateAfterTier} (%)</FieldLabel>
+                        <input type="number" value={(tierRateInput * 100).toFixed(2)}
+                          onChange={(e) => setTierRateInput(Number(e.target.value) / 100)}
+                          style={inputStyle(styles)} step="0.05" />
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ gridColumn: "span 2", fontSize: 12, color: styles.inkSoft, fontStyle: "italic" }}>
+                      {lang === "tc"
+                        ? "啟用後可假設未來某年利率改變（例：頭 18 年 4.85%，之後 3.15%）— 用於壓力測試或反映預期降息。"
+                        : "Enable to model a future rate change (e.g., Y1-Y18 at 4.85%, then 3.15%) — useful for stress test or rate-cut scenarios."}
+                    </div>
+                  )}
+                </div>
+
+                {tierEnabled && (
+                  <div style={{
+                    marginTop: 12, padding: "8px 12px",
+                    backgroundColor: "#FFF4E6", borderLeft: `3px solid ${styles.accent}`,
+                    borderRadius: "2px", fontSize: 12,
+                  }}>
+                    <strong>{lang === "tc" ? "利率示意：" : "Schedule: "}</strong>
+                    Y1{!isCustom && bank.capRate && bank.capYears > 0 ? `-Y${bank.capYears}` : ""} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(rateForYear(1))}</span>
+                    {!isCustom && bank.capRate && bank.capYears > 0 && bank.capYears < tierYear && (
+                      <> · Y{bank.capYears + 1}-Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(loanRate)}</span></>
+                    )}
+                    {(isCustom || !bank.capRate || bank.capYears === 0) && tierYear > 1 && (
+                      <> -Y{tierYear} <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(loanRate)}</span></>
+                    )}
+                    {" · "}Y{tierYear + 1}+ <span style={{ fontFamily: styles.fontMono, color: styles.accent, fontWeight: 600 }}>{fmtPct(tierRateInput)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ═══════════════════ SUMMARY METRICS ═══════════════════ */}
@@ -954,6 +1039,234 @@ export default function PremiumFinancingApp() {
           <MetricCard label={t.initialOutlay} value={fmtCurrency(calc.initialOutlay, currency)} styles={styles} highlight />
           <MetricCard label={t.annualInterest} value={fmtCurrency(calc.year1Interest, currency)} styles={styles} />
           <MetricCard label={t.leverage} value={`${calc.leverage.toFixed(2)}×`} styles={styles} />
+        </div>
+
+        {/* ═══════════════════ COMPARISON: CASH vs PF ═══════════════════ */}
+        <SectionLabel num="05" label={t.comparisonSection} styles={styles} />
+
+        {/* Side-by-side comparison panel at highlight year */}
+        <div className="pf-card" style={{
+          ...cardStyle(styles), padding: 0, overflow: "hidden",
+        }}>
+          {/* Header row with focus year selector */}
+          <div style={{
+            padding: "16px 24px", backgroundColor: "#FAFAF7",
+            borderBottom: `1px solid ${styles.border}`,
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            flexWrap: "wrap", gap: 12,
+          }}>
+            <div>
+              <div style={{
+                fontSize: 11, color: styles.inkSoft, letterSpacing: "0.05em",
+                textTransform: "uppercase", fontWeight: 600,
+              }}>
+                {lang === "tc" ? "對比基準年度" : "Comparison Year"}
+              </div>
+              <div style={{
+                fontFamily: styles.fontDisplay, fontSize: 22, fontWeight: 600,
+                color: styles.ink, marginTop: 2,
+              }}>
+                Y{highlightYear} <span style={{ fontSize: 12, color: styles.inkSoft, fontWeight: 400 }}>
+                  ({lang === "tc" ? "用滑桿調整" : "adjust via slider below"})
+                </span>
+              </div>
+            </div>
+            <div style={{
+              padding: "6px 14px", backgroundColor: "#FFF4E6",
+              borderRadius: "2px", fontSize: 11, color: styles.accentDark,
+              fontFamily: styles.fontMono, fontWeight: 600,
+            }}>
+              {fmtCurrency(premium, currency)} {lang === "tc" ? "保費 / 兩種策略對比" : "premium · two strategies"}
+            </div>
+          </div>
+
+          {/* Two-column comparison */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr",
+            borderBottom: `1px solid ${styles.border}`,
+          }}>
+            {/* LEFT: All-Cash */}
+            <ComparisonColumn
+              title={t.cmpAllCash}
+              subtitle={lang === "tc" ? "傳統做法" : "Traditional"}
+              accent="#5C6B7A"
+              styles={styles}
+              rows={[
+                { label: t.cmpUpfront, value: fmtCurrency(premium, currency), note: lang === "tc" ? "拎出全數保費" : "Full premium upfront" },
+                { label: t.cmpAnnualBurden, value: "—", note: lang === "tc" ? "無利息支出" : "No interest" },
+                { label: t.cmpTotalCost, value: fmtCurrency(premium, currency), note: lang === "tc" ? "等於原保費" : "= Premium" },
+                { label: t.cmpNetWealth, value: fmtCurrency(highlightRow.netCashAllCash, currency), note: lang === "tc" ? "退保時可拿全部 TSV" : "Full TSV at surrender" },
+                { label: t.cmpIRR, value: fmtIRR(highlightRow.irrCash), note: lang === "tc" ? "受 7% cap 限制" : "Subject to 7% cap", highlight: true },
+              ]}
+            />
+            {/* RIGHT: With PF */}
+            <ComparisonColumn
+              title={t.cmpWithPF}
+              subtitle={lang === "tc" ? "槓桿放大" : "Leverage Strategy"}
+              accent={styles.accent}
+              styles={styles}
+              rightSide
+              rows={[
+                { label: t.cmpUpfront, value: fmtCurrency(calc.initialOutlay, currency), note: lang === "tc" ? `釋出 ${fmtCurrency(premium - calc.initialOutlay, currency)}` : `${fmtCurrency(premium - calc.initialOutlay, currency)} freed up` },
+                { label: t.cmpAnnualBurden, value: fmtCurrency(calc.year1Interest, currency), note: lang === "tc" ? "首年利息（變動）" : "Year-1 interest (variable)" },
+                { label: t.cmpTotalCost, value: fmtCurrency(calc.initialOutlay + highlightRow.cumInterest - calc.premiumDiscountAmt, currency), note: lang === "tc" ? `首期 + 累積利息 − 折扣` : "Outlay + cum. interest − discount" },
+                { label: t.cmpNetWealth, value: fmtCurrency(highlightRow.netCashPF, currency), note: lang === "tc" ? "TSV − 貸款 − 累積利息" : "TSV − Loan − Cum. Interest" },
+                { label: t.cmpIRR, value: fmtIRR(highlightRow.irrPF), note: highlightRow.irrPF !== null && highlightRow.irrPF > 0.07 ? (lang === "tc" ? "槓桿後超越 7% cap" : "Exceeds 7% via leverage") : (lang === "tc" ? "槓桿放大效應" : "Leverage uplift"), highlight: true, accent: highlightRow.irrPF !== null && highlightRow.irrPF > 0.07 },
+              ]}
+            />
+          </div>
+
+          {/* Delta highlights bar */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 0, backgroundColor: styles.ink, color: "#F8F5F0",
+          }}>
+            <DeltaCell
+              label={t.cmpCashFreed}
+              value={`+${fmtCurrencyCompact(premium - calc.initialOutlay, currency)}`}
+              fullValue={fmtCurrency(premium - calc.initialOutlay, currency)}
+              hint={lang === "tc" ? `投入減少 ${(((premium - calc.initialOutlay) / premium) * 100).toFixed(0)}%` : `${(((premium - calc.initialOutlay) / premium) * 100).toFixed(0)}% less upfront`}
+              positive
+              styles={styles}
+            />
+            <DeltaCell
+              label={t.cmpLeverageGain}
+              value={highlightRow.irrSpread !== null ? `+${(highlightRow.irrSpread * 100).toFixed(2)}%` : "—"}
+              hint={lang === "tc" ? "IRR 提升幅度" : "IRR uplift"}
+              positive={highlightRow.irrSpread !== null && highlightRow.irrSpread > 0}
+              styles={styles}
+            />
+            <DeltaCell
+              label={lang === "tc" ? "資金效率" : "Capital Efficiency"}
+              value={`${calc.leverage.toFixed(2)}×`}
+              hint={lang === "tc" ? "每蚊現金鎖定資產倍數" : "Asset per $1 of cash"}
+              positive
+              styles={styles}
+            />
+            <DeltaCell
+              label={lang === "tc" ? "Y" + highlightYear + " 淨值差" : "Y" + highlightYear + " Wealth Diff"}
+              value={fmtCurrencyCompact(highlightRow.netCashPF - highlightRow.netCashAllCash, currency)}
+              fullValue={fmtCurrency(highlightRow.netCashPF - highlightRow.netCashAllCash, currency)}
+              hint={lang === "tc" ? "PF 較全現金多/少" : "PF vs All-Cash"}
+              positive={highlightRow.netCashPF > highlightRow.netCashAllCash}
+              negative={highlightRow.netCashPF < highlightRow.netCashAllCash}
+              styles={styles}
+            />
+          </div>
+
+          {/* Insight callout */}
+          <div style={{
+            padding: "16px 24px", backgroundColor: "#FFFAF3",
+            fontSize: 13, lineHeight: 1.6, color: styles.ink,
+          }}>
+            <strong style={{ color: styles.accentDark }}>
+              {lang === "tc" ? "核心洞察：" : "Key Insight: "}
+            </strong>
+            {lang === "tc"
+              ? `用 ${fmtCurrency(calc.initialOutlay, currency)} 替代 ${fmtCurrency(premium, currency)} 投入，您的年化回報由 ${fmtIRR(highlightRow.irrCash)} 提升至 ${fmtIRR(highlightRow.irrPF)}，同時釋出 ${fmtCurrencyCompact(premium - calc.initialOutlay, currency)} 現金可作其他用途。`
+              : `By committing ${fmtCurrency(calc.initialOutlay, currency)} instead of ${fmtCurrency(premium, currency)}, your annualised return rises from ${fmtIRR(highlightRow.irrCash)} to ${fmtIRR(highlightRow.irrPF)}, while ${fmtCurrencyCompact(premium - calc.initialOutlay, currency)} of cash is freed up for other uses.`
+            }
+          </div>
+        </div>
+
+        {/* ═══════════════════ COMPARISON CHART: WEALTH CURVES ═══════════════════ */}
+        <div style={chartCardStyle(styles)} className="pf-card">
+          <ChartHeader title={t.chartCompareTitle} sub={t.chartCompareSub} styles={styles} />
+          <ResponsiveContainer width="100%" height={340}>
+            <LineChart data={visibleProjection} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="2 4" stroke="#E5DFD5" />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: styles.inkSoft }}
+                tickFormatter={(v) => `Y${v}`} />
+              <YAxis tick={{ fontSize: 11, fill: styles.inkSoft }}
+                tickFormatter={(v) => fmtCompact(v)} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 12, fontFamily: styles.fontBody }} />
+              <ReferenceLine y={premium} stroke="#5C6B7A" strokeDasharray="2 2" strokeWidth={1}
+                label={{ value: lang === "tc" ? "保費 break-even" : "Premium B/E", position: "left", fontSize: 9, fill: "#5C6B7A" }} />
+              <ReferenceLine y={calc.initialOutlay} stroke={styles.accent} strokeDasharray="2 2" strokeWidth={1}
+                label={{ value: lang === "tc" ? "首期 break-even" : "Outlay B/E", position: "left", fontSize: 9, fill: styles.accent }} />
+              <Line type="monotone" dataKey="netCashAllCash"
+                name={lang === "tc" ? "全現金 — 退保淨值" : "All-Cash — Net Surrender"}
+                stroke="#5C6B7A" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="netCashPF"
+                name={lang === "tc" ? "保費融資 — 退保淨額" : "With PF — Net After Loan"}
+                stroke={styles.accent} strokeWidth={2.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+          <div style={{
+            marginTop: 8, padding: "8px 12px", backgroundColor: "#F0F4F8",
+            borderLeft: `3px solid #5C6B7A`, fontSize: 11, color: styles.inkSoft,
+            lineHeight: 1.5,
+          }}>
+            <strong style={{ color: "#5C6B7A" }}>
+              {lang === "tc" ? "重點對比：" : "Key Comparison: "}
+            </strong>
+            {lang === "tc"
+              ? "兩條 line 數字看似全現金較高，但 PF 策略只用了 ~23% 現金；要公平對比，請看下方「機會成本分析」加入剩餘現金的另類投資。"
+              : "All-Cash line shows higher absolute value, but PF only used ~23% cash. For fair comparison, see the Opportunity Cost analysis below which factors in the freed cash."}
+          </div>
+        </div>
+
+        {/* ═══════════════════ OPPORTUNITY COST CHART ═══════════════════ */}
+        <div style={chartCardStyle(styles)} className="pf-card">
+          <ChartHeader title={t.chartOppCostTitle} sub={t.chartOppCostSub} styles={styles} />
+
+          {/* Alternative return slider */}
+          <div className="no-print" style={{
+            padding: "12px 16px", backgroundColor: "#FFFAF3",
+            border: `1px solid ${styles.border}`, borderRadius: "2px", marginBottom: 16,
+            display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 16, alignItems: "center",
+          }}>
+            <div>
+              <div style={{ fontSize: 11, color: styles.inkSoft, fontWeight: 600,
+                letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                {t.altReturn}
+              </div>
+              <div style={{ fontSize: 10, color: styles.inkSoft, marginTop: 2 }}>
+                {t.altReturnHint}
+              </div>
+            </div>
+            <input type="range" min="0" max="0.15" step="0.005" value={altReturn}
+              onChange={(e) => setAltReturn(Number(e.target.value))}
+              style={{ accentColor: styles.accent }} />
+            <div style={{
+              fontFamily: styles.fontDisplay, fontSize: 24, fontWeight: 700,
+              color: styles.accent, minWidth: 80, textAlign: "right",
+            }}>
+              {(altReturn * 100).toFixed(1)}%
+            </div>
+          </div>
+
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={visibleProjection} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="2 4" stroke="#E5DFD5" />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: styles.inkSoft }}
+                tickFormatter={(v) => `Y${v}`} />
+              <YAxis tick={{ fontSize: 11, fill: styles.inkSoft }}
+                tickFormatter={(v) => fmtCompact(v)} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 12, fontFamily: styles.fontBody }} />
+              <Line type="monotone" dataKey="allCashNet"
+                name={lang === "tc" ? "全現金投保 (淨值)" : "All-Cash Policy (Net)"}
+                stroke="#5C6B7A" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="pfPlusAltNet"
+                name={lang === "tc" ? `PF + ${(altReturn * 100).toFixed(1)}% 另類投資` : `PF + Alt Invest @ ${(altReturn * 100).toFixed(1)}%`}
+                stroke={styles.accent} strokeWidth={2.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+          <div style={{
+            marginTop: 8, padding: "8px 12px", backgroundColor: "#FFFAF3",
+            borderLeft: `3px solid ${styles.accent}`, fontSize: 11, color: styles.inkSoft,
+            lineHeight: 1.5,
+          }}>
+            <strong style={{ color: styles.accentDark }}>
+              {lang === "tc" ? "公平對比：" : "Apples-to-Apples: "}
+            </strong>
+            {lang === "tc"
+              ? `假設您將融資釋出的 ${fmtCurrencyCompact(premium - calc.initialOutlay, currency)} 投資於 ${(altReturn * 100).toFixed(1)}% 年回報的另類資產（同時每年扣除融資利息），與全現金投保策略的最終淨值對比。當另類投資回報 > 貸款利率時，PF 策略勝出。`
+              : `Assumes the ${fmtCurrencyCompact(premium - calc.initialOutlay, currency)} freed by financing is invested at ${(altReturn * 100).toFixed(1)}% (with annual interest deducted). When alt return > loan rate, PF wins.`
+            }
+          </div>
         </div>
 
         {/* ═══════════════════ KEY BENEFITS STRIP ═══════════════════ */}
@@ -1090,7 +1403,7 @@ export default function PremiumFinancingApp() {
         </div>
 
         {/* ═══════════════════ CHARTS ═══════════════════ */}
-        <SectionLabel num="05" label={t.chartsSection} styles={styles} />
+        <SectionLabel num="06" label={t.chartsSection} styles={styles} />
 
         {/* CHART 1 — Wealth Growth */}
         <div style={chartCardStyle(styles)} className="pf-card">
@@ -1231,8 +1544,93 @@ export default function PremiumFinancingApp() {
           </ResponsiveContainer>
         </div>
 
+        {/* CHART 5 — Leverage Efficiency Scatter */}
+        <div style={chartCardStyle(styles)} className="pf-card">
+          <ChartHeader title={t.chartLeverageTitle} sub={t.chartLeverageSub} styles={styles} />
+          <ResponsiveContainer width="100%" height={340}>
+            <ScatterChart margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="2 4" stroke="#E5DFD5" />
+              <XAxis type="number" dataKey="irrCash"
+                name={t.irrCash}
+                tick={{ fontSize: 11, fill: styles.inkSoft }}
+                tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                domain={[(min) => Math.min(min, 0), 0.10]}
+                label={{ value: t.irrCash, position: "insideBottom", offset: -5, fontSize: 11, fill: styles.inkSoft }} />
+              <YAxis type="number" dataKey="irrPF"
+                name={t.irrPF}
+                tick={{ fontSize: 11, fill: styles.inkSoft }}
+                tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                domain={[(min) => Math.min(min, -0.1), (max) => Math.max(max, 0.10)]}
+                label={{ value: t.irrPF, angle: -90, position: "insideLeft", fontSize: 11, fill: styles.inkSoft }} />
+              <ZAxis type="number" dataKey="year" range={[40, 200]} name={t.year} />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                content={({ active, payload }) => {
+                  if (!active || !payload || !payload.length) return null;
+                  const d = payload[0].payload;
+                  return (
+                    <div style={{
+                      backgroundColor: "#1A1A1A", color: "#F8F5F0", padding: "10px 14px",
+                      borderRadius: "4px", fontSize: 12, fontFamily: styles.fontMono,
+                      border: `1px solid ${styles.accent}`, minWidth: 180,
+                    }}>
+                      <div style={{ marginBottom: 6, opacity: 0.7, fontFamily: styles.fontBody, fontWeight: 600 }}>
+                        {t.year} {d.year}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{t.irrCash}：</span>
+                        <span>{fmtIRR(d.irrCash)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{t.irrPF}：</span>
+                        <span style={{ color: styles.accent }}>{fmtIRR(d.irrPF)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid #444`, marginTop: 4, paddingTop: 4 }}>
+                        <span>{t.cmpLeverageGain}：</span>
+                        <span style={{ color: "#4ADE80" }}>+{((d.irrPF - d.irrCash) * 100).toFixed(2)}%</span>
+                      </div>
+                    </div>
+                  );
+                }} />
+              <Legend wrapperStyle={{ fontSize: 12, fontFamily: styles.fontBody }} />
+              {/* Reference line: y = x (parity, no leverage gain) */}
+              <ReferenceLine stroke="#5C6B7A" strokeDasharray="3 3" strokeWidth={1.5}
+                segment={[{ x: -0.1, y: -0.1 }, { x: 0.10, y: 0.10 }]}
+                label={{ value: lang === "tc" ? "y = x （無槓桿）" : "y = x (no leverage)", position: "right", fontSize: 9, fill: "#5C6B7A" }} />
+              {/* Reference line: 7% IRR cap */}
+              <ReferenceLine y={0.07} stroke={styles.accent} strokeDasharray="2 2" strokeWidth={1.5} />
+              <Scatter
+                name={lang === "tc" ? "保單年度（圓圈大小 = 年份）" : "Policy Years (size = year #)"}
+                data={visibleProjection.filter(r => r.irrPF !== null && r.irrCash !== null)}
+                fill={styles.accent}
+              >
+                {visibleProjection.filter(r => r.irrPF !== null && r.irrCash !== null).map((entry, i) => (
+                  <Cell key={i} fill={
+                    entry.irrPF >= 0.07 ? styles.accent :
+                    entry.irrPF >= 0 ? "#2D6A4F" :
+                    styles.danger
+                  } />
+                ))}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+          <div style={{
+            marginTop: 8, padding: "8px 12px", backgroundColor: "#FFFAF3",
+            borderLeft: `3px solid ${styles.accent}`, fontSize: 11, color: styles.inkSoft,
+            lineHeight: 1.5,
+          }}>
+            <strong style={{ color: styles.accentDark }}>
+              {lang === "tc" ? "讀法：" : "How to read: "}
+            </strong>
+            {lang === "tc"
+              ? "每個圓點代表一個保單年度。圓圈愈靠左下 = 早期回報未成形；愈靠右上 = 長線勝出。所有點都應該位於灰色「y=x 無槓桿線」上方 — 圓點與該線的垂直距離 = 槓桿創造的額外回報。橙色點表示 IRR 已突破 7% cap。"
+              : "Each dot = one policy year. Bottom-left = early years, top-right = long-term wins. All dots should sit above the grey y=x line; the vertical distance = leverage uplift. Orange dots = IRR exceeds 7% cap."
+            }
+          </div>
+        </div>
+
         {/* ═══════════════════ DATA TABLE ═══════════════════ */}
-        <SectionLabel num="06" label={t.tableSection} styles={styles} />
+        <SectionLabel num="07" label={t.tableSection} styles={styles} />
         <div className="pf-card" style={{
           backgroundColor: "#FFFFFF", marginTop: 12, marginBottom: 32,
           border: `1px solid ${styles.border}`, borderRadius: "2px", overflow: "auto",
@@ -1295,7 +1693,7 @@ export default function PremiumFinancingApp() {
         </div>
 
         {/* ═══════════════════ DISCLAIMERS ═══════════════════ */}
-        <SectionLabel num="07" label={t.disclaimerSection} styles={styles} />
+        <SectionLabel num="08" label={t.disclaimerSection} styles={styles} />
         <div className="pf-card" style={{
           backgroundColor: "#FFFAF3", border: `1px solid ${styles.border}`,
           borderLeft: `4px solid ${styles.accent}`, padding: 24, borderRadius: "2px",
@@ -1319,7 +1717,7 @@ export default function PremiumFinancingApp() {
           fontSize: 11, color: styles.inkSoft, fontFamily: styles.fontMono,
           letterSpacing: "0.05em",
         }}>
-          FWD INSURANCE · PREMIUM FINANCING DEMO v3.0 · INTERNAL USE ONLY
+          FWD INSURANCE · PREMIUM FINANCING DEMO v5.0 · INTERNAL USE ONLY
         </footer>
       </main>
     </div>
@@ -1418,6 +1816,86 @@ function KPI({ label, value, full, styles, positive, negative, accent }) {
         fontFamily: styles.fontMono, fontSize: 18, fontWeight: 600, color,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>{value}</div>
+    </div>
+  );
+}
+
+function ComparisonColumn({ title, subtitle, accent, rows, styles, rightSide }) {
+  return (
+    <div style={{
+      padding: "20px 24px",
+      borderRight: rightSide ? "none" : `1px solid ${styles.border}`,
+      backgroundColor: rightSide ? "#FFFAF3" : "#FFFFFF",
+    }}>
+      <div style={{
+        marginBottom: 16, paddingBottom: 12,
+        borderBottom: `2px solid ${accent}`,
+      }}>
+        <div style={{
+          fontSize: 10, color: styles.inkSoft, letterSpacing: "0.1em",
+          textTransform: "uppercase", fontWeight: 600, marginBottom: 4,
+        }}>{subtitle}</div>
+        <div style={{
+          fontFamily: styles.fontDisplay, fontSize: 18, fontWeight: 600,
+          color: accent, letterSpacing: "-0.005em",
+        }}>{title}</div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {rows.map((row, i) => (
+          <div key={i} style={{
+            display: "grid", gridTemplateColumns: "auto 1fr",
+            gap: 8, alignItems: "baseline",
+            padding: row.highlight ? "10px 12px" : "0",
+            backgroundColor: row.highlight ? "#FFF" : "transparent",
+            borderRadius: row.highlight ? "2px" : 0,
+            border: row.highlight ? `1px solid ${row.accent ? styles.accent : styles.border}` : "none",
+          }}>
+            <div style={{
+              fontSize: 11, color: styles.inkSoft,
+              letterSpacing: "0.03em", fontWeight: 600,
+              minWidth: 100,
+            }}>{row.label}</div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{
+                fontFamily: styles.fontMono,
+                fontSize: row.highlight ? 18 : 15,
+                fontWeight: row.highlight ? 700 : 600,
+                color: row.accent ? styles.accent : styles.ink,
+              }}>{row.value}</div>
+              {row.note && (
+                <div style={{
+                  fontSize: 10, color: styles.inkSoft, marginTop: 2,
+                  fontStyle: "italic",
+                }}>{row.note}</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DeltaCell({ label, value, fullValue, hint, positive, negative, styles }) {
+  let color = "#F8F5F0";
+  if (positive) color = "#4ADE80";  // bright green for dark bg
+  if (negative) color = "#F87171";  // bright red for dark bg
+  return (
+    <div title={fullValue || value} style={{
+      padding: "16px 18px",
+      borderRight: `1px solid rgba(255,255,255,0.08)`,
+      minWidth: 0, overflow: "hidden",
+    }}>
+      <div style={{
+        fontSize: 10, opacity: 0.6, letterSpacing: "0.08em",
+        textTransform: "uppercase", marginBottom: 6, fontWeight: 600,
+      }}>{label}</div>
+      <div style={{
+        fontFamily: styles.fontDisplay, fontSize: 22, fontWeight: 700,
+        color, marginBottom: 4,
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      }}>{value}</div>
+      <div style={{ fontSize: 10, opacity: 0.55, lineHeight: 1.3 }}>{hint}</div>
     </div>
   );
 }
